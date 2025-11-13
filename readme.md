@@ -175,9 +175,4 @@ curl -X POST "http://localhost:8001/detect/file" \
 
 ## 许可证
 
-MIT License（可根据需求修改）
-
-
-## 联系方式
-
-如需问题反馈或功能定制，可联系：[your-email@example.com]
+MIT License
