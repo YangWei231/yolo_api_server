@@ -2,11 +2,13 @@
 from ultralytics import YOLO
 from PIL import Image
 import cv2
+import torch
 import numpy as np
 from .high_res_processor import HighResProcessor
 from config import *
 from utils import get_logger
-
+from ultralytics.utils.nms import TorchNMS
+from ultralytics.utils.metrics import batch_probiou
 logger = get_logger(__name__)
 
 class YoloDetector:
@@ -62,4 +64,42 @@ class YoloDetector:
         tiles = self.high_res_processor.slice_image(image)
         # 检测并合并结果
         results = self.high_res_processor.detect_tiles(tiles, roi_offset)
-        return results, len(tiles)
+        # 新增：对合并后的结果执行NMS去重
+        if not results:
+            return results, len(tiles)  # 无结果时直接返回
+        
+        # 1. 转换结果为张量格式
+        # 提取旋转框 [x_center, y_center, width, height, angle]、置信度、类别
+        rboxes = []
+        scores = []
+        classes = []
+        for res in results:
+            rboxes.append(res["rbox"])  # 旋转框参数
+            scores.append(res["confidence"])  # 置信度
+            classes.append(res["class_id"])  # 类别ID
+        
+        # 转换为torch张量
+        rboxes = torch.tensor(rboxes, dtype=torch.float32)  # shape: [N, 5]
+        scores = torch.tensor(scores, dtype=torch.float32)  # shape: [N]
+        classes = torch.tensor(classes, dtype=torch.int64)  # shape: [N]
+        
+        # 2. 为不同类别添加偏移量（确保NMS仅在同类间生效）
+        # 偏移量 = 类别ID * 最大可能坐标值（避免不同类别的框重叠判断）
+        max_wh = torch.max(rboxes[:, :2]) * 2  # 取中心坐标最大值的2倍作为偏移基数
+        c = classes.float() * max_wh  # 类别偏移量
+        rboxes_with_cls = rboxes.clone()
+        rboxes_with_cls[:, :2] += c.unsqueeze(1)  # 将偏移量添加到x_center和y_center
+        
+        # 3. 执行旋转框NMS（使用Ultralytics原生实现）
+        # IoU阈值参考val.py中的0.3，可根据场景调整
+        keep_indices = TorchNMS.fast_nms(
+            boxes=rboxes_with_cls,
+            scores=scores,
+            iou_threshold=0.3,
+            iou_func=batch_probiou  # 旋转框IoU计算函数
+        )
+        
+        # 4. 过滤重复结果
+        filtered_results = [results[i] for i in keep_indices.numpy()]
+        
+        return filtered_results, len(tiles)

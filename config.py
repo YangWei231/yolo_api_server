@@ -5,7 +5,8 @@ from typing import Tuple
 # 模型配置
 YOLO_MODEL_PATH = os.getenv(
     "YOLO_MODEL_PATH", 
-    "/home/wsl/Workspace/remote_qwen_lamp/HF_process_w_yolo12/yolo11s-obb.pt"
+    # "/home/wsl/Workspace/remote_qwen_lamp/HF_process_w_yolo12/yolo11s-obb.pt"
+    "yolo11l-obb.pt"
 )
 
 # 高分辨率处理默认参数
